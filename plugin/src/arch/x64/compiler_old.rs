@@ -7,7 +7,6 @@ use crate::serialize;
 
 use super::{Context, X86Mode};
 use super::ast::{RawArg, CleanArg, SizedArg, Instruction, MemoryRefItem, Register, RegKind, RegFamily, RegId};
-use super::x64data;
 use super::x64data::get_mnemnonic_data;
 use super::x64data::Flags;
 use super::x64data::Features;
@@ -133,8 +132,8 @@ pub(super) fn compile_instruction(ctx: &mut Context, instruction: Instruction, a
     let mut pref_size = false;
     let mut rex_w = false;
     let mut vex_l = false;
-    // println!("\n\nFLAGS {:?}", data.flags);
-    // println!("INSTRUCTION {:?}", instruction.idents);
+    println!("\n\nFLAGS {:?}", data.flags);
+    println!("INSTRUCTION {:?}", instruction.idents);
 
     // determine if size prefixes are necessary
     if data.flags.intersects(Flags::AUTO_SIZE | Flags::AUTO_NO32 | Flags::AUTO_REXW | Flags::AUTO_VEXL) {
@@ -1052,67 +1051,67 @@ fn match_format_string(ctx: &Context, fmt: &Opdata, args: &[CleanArg]) -> Result
 
         let size = match (code, arg) {
             // immediates
-            (x64data::Immediate, &CleanArg::Immediate{size, ..})  |
-            (x64data::OWord, &CleanArg::Immediate{size, ..})  |
-            (x64data::OWord, &CleanArg::JumpTarget{size, ..}) => size,
+            (b'i', &CleanArg::Immediate{size, ..})  |
+            (b'o', &CleanArg::Immediate{size, ..})  |
+            (b'o', &CleanArg::JumpTarget{size, ..}) => size,
 
             // specific legacy regs
-            (x @ x64data::rax ..= x64data::r15, &CleanArg::Direct{ref reg, ..}) if
+            (x @ b'A' ..= b'P', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::LEGACY &&
-                reg.kind.code() == Some(x - x64data::rax) => Some(reg.size()),
+                reg.kind.code() == Some(x - b'A') => Some(reg.size()),
 
             // specific segment regs
-            (x @ x64data::es ..= x64data::gs, &CleanArg::Direct{ref reg, ..}) if
+            (x @ b'Q' ..= b'V', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::SEGMENT &&
-                reg.kind.code() == Some(x - x64data::es) => Some(reg.size()),
+                reg.kind.code() == Some(x - b'Q') => Some(reg.size()),
 
             // CR8 can be specially referenced
-            (x64data::CR8, &CleanArg::Direct{ref reg, ..}) if
+            (b'W', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind == RegId::CR8 => Some(reg.size()),
 
             // top of the fp stack is also often used
-            (x64data::st0, &CleanArg::Direct{ref reg, ..}) if
+            (b'X', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind == RegId::ST0 => Some(reg.size()),
 
             // generic legacy regs
-            (x64data::Legacy, &CleanArg::Direct{ref reg, ..}) |
-            (x64data::LegacyMemory, &CleanArg::Direct{ref reg, ..}) if
+            (b'r', &CleanArg::Direct{ref reg, ..}) |
+            (b'v', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::LEGACY ||
                 reg.kind.family() == RegFamily::HIGHBYTE => Some(reg.size()),
 
             // other reg types often mixed with memory refs
-            (x64data::MMXRegister, &CleanArg::Direct{ref reg, ..}) |
-            (x64data::MMXMemory, &CleanArg::Direct{ref reg, ..}) if
+            (b'x', &CleanArg::Direct{ref reg, ..}) |
+            (b'u', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::MMX => Some(reg.size()),
-            (x64data::AVXRegister, &CleanArg::Direct{ref reg, ..}) |
-            (x64data::Word, &CleanArg::Direct{ref reg, ..}) if
+            (b'y', &CleanArg::Direct{ref reg, ..}) |
+            (b'w', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::XMM => Some(reg.size()),
 
             // other reg types
-            (x64data::FWord, &CleanArg::Direct{ref reg, ..}) if
+            (b'f', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::FP => Some(reg.size()),
-            (x64data::Segment, &CleanArg::Direct{ref reg, ..}) if
+            (b's', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::SEGMENT => Some(reg.size()),
-            (x64data::Control, &CleanArg::Direct{ref reg, ..}) if
+            (b'c', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::CONTROL => Some(reg.size()),
-            (x64data::DWord, &CleanArg::Direct{ref reg, ..}) if
+            (b'd', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::DEBUG => Some(reg.size()),
-            (x64data::Byte, &CleanArg::Direct{ref reg, ..}) if
+            (b'b', &CleanArg::Direct{ref reg, ..}) if
                 reg.kind.family() == RegFamily::BOUND => Some(reg.size()),
 
             // memory offsets
-            (x64data::Memory,          &CleanArg::Indirect {size, ref index, ..}) |
-            (x64data::MMXMemory ..= x64data::Word, &CleanArg::Indirect {size, ref index, ..}) if
+            (b'm',          &CleanArg::Indirect {size, ref index, ..}) |
+            (b'u' ..= b'w', &CleanArg::Indirect {size, ref index, ..}) if
                 index.is_none() || index.as_ref().unwrap().0.kind.family() != RegFamily::XMM => size,
 
-            (x64data::Memory,          &CleanArg::IndirectJumpTarget {size, ..}) |
-            (x64data::MMXMemory ..= x64data::Word, &CleanArg::IndirectJumpTarget {size, ..}) => size,
+            (b'm',          &CleanArg::IndirectJumpTarget {size, ..}) |
+            (b'u' ..= b'w', &CleanArg::IndirectJumpTarget {size, ..}) => size,
 
             // vsib addressing. as they have two sizes that must be checked they check one of the sizes here
-            (x64data::VSIB32, &CleanArg::Indirect {size, index: Some((ref index, _, _)), ..}) if
+            (b'k', &CleanArg::Indirect {size, index: Some((ref index, _, _)), ..}) if
                 (size.is_none() || size == Some(Size::DWORD)) &&
                 index.kind.family() == RegFamily::XMM => Some(index.size()),
-            (x64data::VSIB64, &CleanArg::Indirect {size, index: Some((ref index, _, _)), ..}) if
+            (b'l', &CleanArg::Indirect {size, index: Some((ref index, _, _)), ..}) if
                 (size.is_none() ||  size == Some(Size::QWORD)) &&
                 index.kind.family() == RegFamily::XMM => Some(index.size()),
             _ => return Err("argument type mismatch")
@@ -1121,36 +1120,36 @@ fn match_format_string(ctx: &Context, fmt: &Opdata, args: &[CleanArg]) -> Result
         if let Some(size) = size {
             if !match (fsize, code) {
                 // immediates can always fit in larger slots
-                (x64data::Word, x64data::Immediate) => size <= Size::WORD,
-                (x64data::DWord, x64data::Immediate) => size <= Size::DWORD,
-                (x64data::QWord, x64data::Immediate) => size <= Size::QWORD,
-                (x64data::Auto, x64data::Immediate) => size <= Size::DWORD,
+                (b'w', b'i') => size <= Size::WORD,
+                (b'd', b'i') => size <= Size::DWORD,
+                (b'q', b'i') => size <= Size::QWORD,
+                (b'*', b'i') => size <= Size::DWORD,
                 // normal size matches
-                (x64data::Byte, _)    => size == Size::BYTE,
-                (x64data::Word, _)    => size == Size::WORD,
-                (x64data::DWord, _)    => size == Size::DWORD,
-                (x64data::QWord, _)    => size == Size::QWORD,
-                (x64data::FWord, _)    => size == Size::FWORD,
-                (x64data::PWord, _)    => size == Size::PWORD,
-                (x64data::OWord, _)    => size == Size::OWORD,
-                (x64data::HWord, _)    => size == Size::HWORD,
+                (b'b', _)    => size == Size::BYTE,
+                (b'w', _)    => size == Size::WORD,
+                (b'd', _)    => size == Size::DWORD,
+                (b'q', _)    => size == Size::QWORD,
+                (b'f', _)    => size == Size::FWORD,
+                (b'p', _)    => size == Size::PWORD,
+                (b'o', _)    => size == Size::OWORD,
+                (b'h', _)    => size == Size::HWORD,
                 // what is allowed for wildcards
-                (x64data::Auto, x64data::VSIB32) |
-                (x64data::Auto, x64data::VSIB64) |
-                (x64data::Auto, x64data::AVXRegister) |
-                (x64data::Auto, x64data::Word) => size == Size::OWORD || size == Size::HWORD,
-                (x64data::Auto, x64data::Legacy) |
-                (x64data::Auto, x64data::rax ..= x64data::r15) |
-                (x64data::Auto, x64data::LegacyMemory) => size == Size::WORD || size == Size::DWORD || size == Size::QWORD,
-                (x64data::Auto, x64data::Memory) => true,
-                (x64data::Auto, _)    => panic!("Invalid size wildcard"),
-                (x64data::CalcAuto, _)    => true,
-                (x64data::MemAuto, _)    => false,
+                (b'*', b'k') |
+                (b'*', b'l') |
+                (b'*', b'y') |
+                (b'*', b'w') => size == Size::OWORD || size == Size::HWORD,
+                (b'*', b'r') |
+                (b'*', b'A' ..= b'P') |
+                (b'*', b'v') => size == Size::WORD || size == Size::DWORD || size == Size::QWORD,
+                (b'*', b'm') => true,
+                (b'*', _)    => panic!("Invalid size wildcard"),
+                (b'?', _)    => true,
+                (b'!', _)    => false,
                 _ => panic!("invalid format string")
             } {
                 return Err("argument size mismatch");
             }
-        } else if fsize != x64data::Auto && fmt.flags.contains(Flags::EXACT_SIZE) {
+        } else if fsize != b'*' && fmt.flags.contains(Flags::EXACT_SIZE) {
             // Basically, this format is a more specific version of an instruction
             // that also has more general versions. This should only be picked
             // if the size constraints are met, not if the size is unspecified
@@ -1173,7 +1172,7 @@ fn size_operands(fmt: &Opdata, args: Vec<CleanArg>) -> Result<(Option<Size>, Vec
 
     // operand size determination loop
     for (arg, (_, fsize)) in args.iter().zip(FormatStringIterator::new(&fmt.args)) {
-        if fsize != x64data::Auto {
+        if fsize != b'*' {
             continue;
         }
 
@@ -1239,19 +1238,19 @@ fn size_operands(fmt: &Opdata, args: Vec<CleanArg>) -> Result<(Option<Size>, Vec
         
         //get the specified operand size from the format string
         let size = match (fsize, code) {
-            (x64data::Byte, _) => Size::BYTE,
-            (x64data::Word, _) => Size::WORD,
-            (_, x64data::VSIB32) |
-            (x64data::DWord, _) => Size::DWORD,
-            (_, x64data::VSIB64) |
-            (x64data::QWord, _) => Size::QWORD,
-            (x64data::FWord, _) => Size::FWORD,
-            (x64data::PWord, _) => Size::PWORD,
-            (x64data::OWord, _) => Size::OWORD,
-            (x64data::HWord, _) => Size::HWORD,
-            (x64data::Auto, x64data::Immediate) => im_size.unwrap(),
-            (x64data::Auto, _) => op_size.unwrap(),
-            (x64data::MemAuto, _) => Size::BYTE, // will never be used, placeholder
+            (b'b', _) => Size::BYTE,
+            (b'w', _) => Size::WORD,
+            (_, b'k') |
+            (b'd', _) => Size::DWORD,
+            (_, b'l') |
+            (b'q', _) => Size::QWORD,
+            (b'f', _) => Size::FWORD,
+            (b'p', _) => Size::PWORD,
+            (b'o', _) => Size::OWORD,
+            (b'h', _) => Size::HWORD,
+            (b'*', b'i') => im_size.unwrap(),
+            (b'*', _) => op_size.unwrap(),
+            (b'!', _) => Size::BYTE, // will never be used, placeholder
             _ => unreachable!()
         };
 
@@ -1389,20 +1388,20 @@ fn extract_args(fmt: &'static Opdata, args: Vec<SizedArg>) -> (Option<SizedArg>,
 
     for (arg, (c, _)) in args.into_iter().zip(FormatStringIterator::new(fmt.args)) {
         match c {
-            x64data::Memory | x64data::MMXMemory | x64data::LegacyMemory | x64data::Word | x64data::VSIB32 | x64data::VSIB64  => if memarg.is_some() {
+            b'm' | b'u' | b'v' | b'w' | b'k' | b'l'  => if memarg.is_some() {
                 panic!("multiple memory arguments in format string");
             } else {
                 memarg = Some(regs.len());
                 regs.push(arg)
             },
-            x64data::FWord | x64data::MMXRegister | x64data::Legacy | x64data::AVXRegister | x64data::Byte => regs.push(arg),
-            x64data::Control | x64data::DWord | x64data::Segment        => if regarg.is_some() {
+            b'f' | b'x' | b'r' | b'y' | b'b' => regs.push(arg),
+            b'c' | b'd' | b's'        => if regarg.is_some() {
                 panic!("multiple segment, debug or control registers in format string");
             } else {
                 regarg = Some(regs.len());
                 regs.push(arg)
             },
-            x64data::Immediate | x64data::OWord => immediates.push(arg),
+            b'i' | b'o' => immediates.push(arg),
             _ => () // hardcoded regs don't have to be encoded
         }
     }
@@ -1561,13 +1560,12 @@ rm: &Option<SizedArg>, map_sel: u8, rex_w: bool, vvvv: &Option<SizedArg>, vex_l:
         vvvv_k = reg.kind.clone();
     }
 
-    // println!("VEXL {}", vex_l);
-    // println!("MAP_SEL 0x{:02x} {:08b}", map_sel, map_sel);
+    println!("VEXL {}", vex_l);
     let byte2 = (prefix           & 0x3)      |
                 (rex_w            as u8) << 7 |
                 (!vvvv_k.encode() & 0xF) << 3 |
                 (vex_l            as u8) << 2 ;
-    // println!("BYTE {:08b}", byte2);
+    println!("BYTE {:08b}", byte2);
 
     if data.flags.contains(Flags::VEX_OP) && (byte1 & 0x7F) == 0x61 && (byte2 & 0x80) == 0 &&
     ((!index_k.is_dynamic() && !base_k.is_dynamic()) || mode == X86Mode::Protected) {
